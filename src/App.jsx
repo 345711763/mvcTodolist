@@ -1,11 +1,13 @@
 import React from "react";
-import styled from "styled-components";
-import { KeyCode } from "./utils/constants";
+import styled, { css } from "styled-components";
+import {DEFAULT_CATEGORY, KeyCode} from "./utils/constants";
 import { getHashPath } from "./utils/pageAddress";
 import Todos from "./utils/TodoList";
 import GlobalStyle from "./GlobalStyle";
 import TodoItem from "./TodoItem";
 import Footer from "./Footer";
+import Categories from "./utils/Categories";
+import Tab from './components/Tab';
 
 const Page = styled.div`
   .info {
@@ -46,13 +48,12 @@ const TodoApp = styled.section`
 
   label.indicator {
     position: absolute;
-    top: 14px;
+    top: 54px;
     left: -8px;
     font-size: 22px;
     color: #e6e6e6;
     padding: 10px 27px 10px 27px;
   }
-
   input::-webkit-input-placeholder {
     font-style: italic;
     font-weight: 300;
@@ -69,6 +70,12 @@ const TodoApp = styled.section`
     color: #e6e6e6;
   }
 `;
+const Tabs = styled.div`
+  color: #5ea4f3;
+  cursor: pointer;
+  padding: 7px 7px 0 7px;
+  border-bottom: 1px solid #e5e8ea;
+`
 
 const Input = styled.input`
   position: relative;
@@ -102,17 +109,22 @@ class App extends React.Component {
   state = {
     newTodo: "",
     filter: getHashPath() || "active",
+    selectedCategoryId: DEFAULT_CATEGORY.id,
+    categories: [],
     items: [],
   };
 
   todos = new Todos();
+  categories = new Categories();
 
-  loadItems(filter) {
-    if (filter == null || filter == this.state.filter) {
-      this.setState({ items: this.todos.filter(this.state.filter) });
-    } else {
-      this.setState({ filter, items: this.todos.filter(filter) });
-    }
+  loadItems() {
+    const { filter, selectedCategoryId } = this.state;
+    this.setState({
+      items: this.todos.filter({
+        status: filter,
+        categoryId: selectedCategoryId
+      })
+    });
   }
 
   inputText = event => {
@@ -120,46 +132,80 @@ class App extends React.Component {
   };
 
   newTodoKeyDown = event => {
+    const { newTodo, selectedCategoryId, filter } = this.state;
     if (event.keyCode == KeyCode.Enter) {
       event.preventDefault();
-      var title = this.state.newTodo.trim();
+      const title = newTodo.trim();
       if (title) {
-        this.todos.add(title);
+        this.todos.add(title, selectedCategoryId);
         this.setState({ newTodo: "" });
-        const filter =
-          this.state.filter == "completed" ? "active" : this.state.filter;
-        this.loadItems(filter);
+        this.loadItems({
+          status: filter,
+          categoryId: selectedCategoryId
+        });
       }
     }
   };
 
-  toggle = todo => {
-    return () => {
-      this.todos.toggle(todo);
-      this.loadItems();
-    };
+  toggle = todo => () => {
+    this.todos.toggle(todo);
+    this.loadItems();
   };
 
-  update = todo => {
-    return newName => {
-      this.todos.rename(todo.id, newName);
-      this.loadItems();
-    };
+  update = todo => newName => {
+    this.todos.rename(todo.id, newName);
+    this.loadItems();
   };
 
-  destroy = todo => {
-    return () => {
-      this.todos.delete(todo);
-      this.loadItems();
-    };
+  destroy = todo => () => {
+    this.todos.delete(todo);
+    this.loadItems();
   };
 
   hashchange = () => {
-    this.loadItems(getHashPath());
-  };
+    const newHashPath = getHashPath();
+    this.setState({
+      filter: newHashPath
+    }, () => this.loadItems())
+  }
 
+  loadCategories() {
+    this.setState({
+      categories: this.categories.items
+    })
+  }
+  createNewCategory = () => {
+    const defaultCategoryName = 'New List';
+    this.categories.add(defaultCategoryName);
+    this.loadCategories();
+    this.selectCategory(this.categories.items[this.categories.items.length - 1].id); // select created category
+  }
+
+  selectCategory = (id) => {
+    this.setState({
+      selectedCategoryId: id
+    }, () => this.loadItems());
+  }
+
+  updateCategory = (id, name) => {
+    this.categories.rename(id, name);
+    this.loadCategories();
+  }
+  deleteCategory = (id) => {
+    const { selectedCategoryId } = this.state;
+    const isDeletingSelectedCategory = selectedCategoryId === id;
+    if (isDeletingSelectedCategory) {
+      const indexOfDeletedCategory = this.categories.items.findIndex(item => item.id === id)
+      const categoryBeforeDeletedCategory = this.categories.items[indexOfDeletedCategory - 1];
+      this.selectCategory(categoryBeforeDeletedCategory !== undefined ? categoryBeforeDeletedCategory.id : DEFAULT_CATEGORY.id)
+    }
+    this.categories.delete(id);
+    this.todos.deleteByCategory(id);
+    this.loadCategories();
+  }
   componentDidMount() {
     this.loadItems();
+    this.loadCategories();
     window.addEventListener("hashchange", this.hashchange);
   }
 
@@ -168,13 +214,38 @@ class App extends React.Component {
   }
 
   render() {
-    const { newTodo, filter, items } = this.state;
+    const { newTodo, filter, items, categories, selectedCategoryId } = this.state;
     return (
       <Page>
         <GlobalStyle />
         <Title>todos</Title>
         <TodoApp>
           <label className="indicator">❯</label>
+          <Tabs>
+            <Tab
+              isSelected={selectedCategoryId === DEFAULT_CATEGORY.id}
+              onClick={() => this.selectCategory(DEFAULT_CATEGORY.id)}
+              label={DEFAULT_CATEGORY.name}
+            />
+            {categories.map(({name, id}) => {
+              return (
+                <Tab
+                  key={id}
+                  isSelected={selectedCategoryId === id}
+                  onClick={() => this.selectCategory(id)}
+                  editable={true}
+                  deletable={true}
+                  onDelete={(e) => {
+                    e.stopPropagation()
+                    this.deleteCategory(id)
+                  }}
+                  onUpdate={(name) => this.updateCategory(id, name)}
+                  label={name}
+                />
+              )
+            })}
+            <Tab onClick={this.createNewCategory} label='+' />
+          </Tabs>
           <Input
             placeholder="What needs to be done?"
             value={newTodo}

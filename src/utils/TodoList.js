@@ -1,4 +1,5 @@
 import _ from "lodash";
+import {DEFAULT_CATEGORY} from "./constants";
 
 const storagekey = "todos::data";
 
@@ -26,12 +27,13 @@ export default class TodoList {
     return this.maxId;
   }
 
-  add(name) {
+  add(name, categoryId) {
     const item = {
       id: this.newId(),
       name,
       completed: false,
       createdAt: Date.now(),
+      categoryId,
     };
     this.items.unshift(item);
     this.save();
@@ -39,6 +41,11 @@ export default class TodoList {
 
   delete(todo) {
     this.items = this.items.filter(item => item.id != todo.id);
+    this.save();
+  }
+
+  deleteByCategory(categoryId) {
+    this.items = this.items.filter(item => item.categoryId != categoryId);
     this.save();
   }
 
@@ -61,15 +68,18 @@ export default class TodoList {
     }
   }
 
-  filter(status) {
-    switch (status) {
-      case "active":
-        return this.items.filter(item => item.completed == false);
-      case "completed":
-        return this.items.filter(item => item.completed == true);
-      case "all":
-      default:
-        return this.items;
-    }
+  filter({ status, categoryId }) {
+    return this.items.filter(item => {
+      if (categoryId !== DEFAULT_CATEGORY.id && item.categoryId !== categoryId) return false;
+      switch (status) {
+        case "active":
+          return item.completed == false;
+        case "completed":
+          return item.completed == true;
+        case "all":
+        default:
+          return true;
+      }
+    })
   }
 }
